@@ -145,3 +145,5 @@ pub use atsamv71q21b as target_device;
 pub mod serial;
 #[cfg(feature = "device-selected")]
 pub mod watchdog;
+#[cfg(feature = "device-selected")]
+pub mod spi;
