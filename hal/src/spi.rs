@@ -172,6 +172,13 @@ impl Spi<SPI0> {
 }
 
 impl Spi<USART0> {
+    pub fn new(spi: USART0) -> Self {
+        spi.us_mr_spi_mode().write(|w| w.usart_mode().spi_master());
+        Spi {
+            peripheral: spi,
+        }
+    }
+    
     pub fn set_spi_mode( &mut self, mode: spi::Mode) {
         set_mode_usart(&*self.peripheral, mode);
     }
