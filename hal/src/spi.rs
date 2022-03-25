@@ -164,6 +164,17 @@ impl Spi<SPI0> {
     }
 }
 
+impl Spi<USART0> {
+    pub fn set_spi_mode( &mut self, mode: spi::Mode) {
+        set_mode_usart(&*self.peripheral, mode);
+    }
+
+    pub fn spi_mode( mut self, mode: spi::Mode) -> Self {
+        self.set_spi_mode(mode);
+        self
+    }
+}
+
 fn read_spi( regs: &SPIRegisterBlock) -> nb::Result<u8, Error> {
     if regs.spi_sr.read().txempty().bit_is_clear() {
         Err(nb::Error::WouldBlock)
@@ -214,3 +225,20 @@ fn send_usart( regs: &USARTRegisterBlock, word: u8) -> nb::Result<(), Error> {
         Ok(())
     }
 }
+fn set_mode_usart( regs: &USARTRegisterBlock, mode: spi::Mode) {
+    match mode {
+        spi::MODE_0 => {
+            regs.us_mr_spi_mode().modify(|_,w| w.cpol().clear_bit().cpha().set_bit());
+        }
+        spi::MODE_1 => {
+            regs.us_mr_spi_mode().modify(|_,w| w.cpol().clear_bit().cpha().clear_bit());
+        }
+        spi::MODE_2 => {
+            regs.us_mr_spi_mode().modify(|_,w| w.cpol().set_bit().cpha().set_bit());
+        }
+        spi::MODE_3 => {
+            regs.us_mr_spi_mode().modify(|_,w| w.cpol().set_bit().cpha().clear_bit());
+        }
+    }
+}
+
