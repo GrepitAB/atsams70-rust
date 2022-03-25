@@ -1,4 +1,5 @@
 use crate::{ehal, nb};
+use ehal::spi;
 
 use crate::target_device::SPI0;
 #[cfg(any(
@@ -152,6 +153,16 @@ impl ehal::spi::FullDuplex<u8> for Spi<USART0> {
 
 }
 
+impl Spi<SPI0> {
+    pub fn set_spi_mode( &mut self, mode: spi::Mode) {
+        set_mode_spi(mode);
+    }
+
+    pub fn spi_mode( mut self, mode: spi::Mode) -> Self {
+        self.set_mode_spi(mode);
+        self
+    }
+}
 
 fn read_spi( regs: &SPIRegisterBlock) -> nb::Result<u8, Error> {
     if regs.spi_sr.read().txempty().bit_is_clear() {
@@ -167,6 +178,23 @@ fn send_spi( regs: &SPIRegisterBlock, word: u8) -> nb::Result<(), Error> {
     } else {
         regs.spi_tdr.write(|w| unsafe{w.td().bits(word as u16)});
         Ok(())
+    }
+}
+
+fn set_mode_spi( regs: &SPIRegisterBlock, mode: spi::Mode) {
+    match mode {
+        spi::MODE_0 => {
+            regs.spi_csr.modify(|_,w| w.cpol().idle_low().ncpha().valid_trailing_edge());
+        }
+        spi::MODE_1 => {
+            regs.spi_csr.modify(|_,w| w.cpol().idle_low().ncpha().valid_leading_edge());
+        }
+        spi::MODE_2 => {
+            regs.spi_csr.modify(|_,w| w.cpol().idle_high().ncpha().valid_trailing_edge());
+        }
+        spi::MODE_3 => {
+            regs.spi_csr.modify(|_,w| w.cpol().idle_high().ncpha().valid_leading_edge());
+        }
     }
 }
 
