@@ -155,11 +155,11 @@ impl ehal::spi::FullDuplex<u8> for Spi<USART0> {
 
 impl Spi<SPI0> {
     pub fn set_spi_mode( &mut self, mode: spi::Mode) {
-        set_mode_spi(mode);
+        set_mode_spi(&*self.peripheral, mode);
     }
 
     pub fn spi_mode( mut self, mode: spi::Mode) -> Self {
-        self.set_mode_spi(mode);
+        self.set_spi_mode(mode);
         self
     }
 }
@@ -184,16 +184,16 @@ fn send_spi( regs: &SPIRegisterBlock, word: u8) -> nb::Result<(), Error> {
 fn set_mode_spi( regs: &SPIRegisterBlock, mode: spi::Mode) {
     match mode {
         spi::MODE_0 => {
-            regs.spi_csr.modify(|_,w| w.cpol().idle_low().ncpha().valid_trailing_edge());
+            regs.spi_csr[0].modify(|_,w| w.cpol().idle_low().ncpha().valid_trailing_edge());
         }
         spi::MODE_1 => {
-            regs.spi_csr.modify(|_,w| w.cpol().idle_low().ncpha().valid_leading_edge());
+            regs.spi_csr[0].modify(|_,w| w.cpol().idle_low().ncpha().valid_leading_edge());
         }
         spi::MODE_2 => {
-            regs.spi_csr.modify(|_,w| w.cpol().idle_high().ncpha().valid_trailing_edge());
+            regs.spi_csr[0].modify(|_,w| w.cpol().idle_high().ncpha().valid_trailing_edge());
         }
         spi::MODE_3 => {
-            regs.spi_csr.modify(|_,w| w.cpol().idle_high().ncpha().valid_leading_edge());
+            regs.spi_csr[0].modify(|_,w| w.cpol().idle_high().ncpha().valid_leading_edge());
         }
     }
 }
