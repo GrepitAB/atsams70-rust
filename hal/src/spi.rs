@@ -27,6 +27,21 @@ use crate::target_device::{QSPI, USART0, USART1, USART2};
 use crate::target_device::SPI1;
 
 use crate::target_device::spi0::RegisterBlock as SPIRegisterBlock;
+#[cfg(any(
+        feature = "sams70n19b",
+        feature = "sams70n20b",
+        feature = "sams70n21b",
+        feature = "sams70q19b",
+        feature = "sams70q20b",
+        feature = "sams70q21b",
+        feature = "same70n19b",
+        feature = "same70n20b",
+        feature = "same70n21b",
+        feature = "same70q19b",
+        feature = "same70q20b",
+        feature = "same70q21b",
+))]
+use crate::target_device::usart0::RegisterBlock as USARTRegisterBlock;
 
 pub struct Spi<P> {
     peripheral: P,
@@ -123,6 +138,20 @@ impl ehal::spi::FullDuplex<u8> for Spi<SPI0> {
 
 }
 
+impl ehal::spi::FullDuplex<u8> for Spi<USART0> {
+    type Error = Error;
+    
+    fn read(&mut self) -> nb::Result<u8, Self::Error> {
+        read_usart(&*self.peripheral)
+    }
+
+    fn send(&mut self, word: u8) -> nb::Result<(), Self::Error> {
+        send_usart(&*self.peripheral, word)
+    }
+
+
+}
+
 
 fn read_spi( regs: &SPIRegisterBlock) -> nb::Result<u8, Error> {
     if regs.spi_sr.read().txempty().bit_is_clear() {
@@ -141,3 +170,19 @@ fn send_spi( regs: &SPIRegisterBlock, word: u8) -> nb::Result<(), Error> {
     }
 }
 
+fn read_usart( regs: &USARTRegisterBlock) -> nb::Result<u8, Error> {
+    if regs.us_csr_spi_mode().read().txempty().bit_is_clear() {
+        Err(nb::Error::WouldBlock)
+    } else {
+        Ok(regs.us_rhr.read().rxchr().bits() as u8)
+    }
+}
+
+fn send_usart( regs: &USARTRegisterBlock, word: u8) -> nb::Result<(), Error> {
+    if regs.us_csr_spi_mode().read().txrdy().bit_is_clear() {
+        Err(nb::Error::WouldBlock)
+    } else {
+        regs.us_thr.write(|w| unsafe {w.txchr().bits(word as u16)});
+        Ok(())
+    }
+}
