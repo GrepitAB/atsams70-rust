@@ -154,6 +154,13 @@ impl ehal::spi::FullDuplex<u8> for Spi<USART0> {
 }
 
 impl Spi<SPI0> {
+
+    pub fn new(spi: SPI0) -> Self {
+        Spi {
+            peripheral: spi,
+        }
+    }
+
     pub fn set_spi_mode( &mut self, mode: spi::Mode) {
         set_mode_spi(&*self.peripheral, mode);
     }
