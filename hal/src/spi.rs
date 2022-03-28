@@ -153,6 +153,11 @@ impl ehal::spi::FullDuplex<u8> for Spi<USART0> {
 
 }
 
+impl ehal::blocking::spi::transfer::Default<u8> for Spi<SPI0> {}
+impl ehal::blocking::spi::transfer::Default<u8> for Spi<USART0> {}
+impl ehal::blocking::spi::write::Default<u8> for Spi<SPI0> {}
+impl ehal::blocking::spi::write::Default<u8> for Spi<USART0> {}
+
 impl Spi<SPI0> {
 
     pub fn new(spi: SPI0) -> Self {
