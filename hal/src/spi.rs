@@ -1,5 +1,8 @@
 use crate::{ehal, nb};
 use ehal::spi;
+use ehal::spi::FullDuplex;
+use nb::block;
+use cortex_m;
 
 use crate::target_device::SPI0;
 #[cfg(any(
@@ -139,7 +142,7 @@ impl ehal::spi::FullDuplex<u8> for Spi<SPI0> {
 
 }
 
-impl ehal::spi::FullDuplex<u8> for Spi<USART0> {
+impl ehal::spi::FullDuplex<u8> for Spi<USART1> {
     type Error = Error;
     
     fn read(&mut self) -> nb::Result<u8, Self::Error> {
@@ -153,10 +156,74 @@ impl ehal::spi::FullDuplex<u8> for Spi<USART0> {
 
 }
 
-impl ehal::blocking::spi::transfer::Default<u8> for Spi<SPI0> {}
-impl ehal::blocking::spi::transfer::Default<u8> for Spi<USART0> {}
+// impl ehal::blocking::spi::transfer::Default<u8> for Spi<SPI0> {}
+// impl ehal::blocking::spi::transfer::Default<u8> for Spi<USART1> {}
 impl ehal::blocking::spi::write::Default<u8> for Spi<SPI0> {}
-impl ehal::blocking::spi::write::Default<u8> for Spi<USART0> {}
+
+impl ehal::blocking::spi::Write<u8> for Spi<USART1> {
+
+    type Error = Error;
+
+    fn write(&mut self, words: &[u8]) -> Result<(), Error> {
+        self.set_cs_low();
+        // Delay because 1.75us between CS low and SCLK high is needed for mc33664
+        cortex_m::asm::delay(10);
+        words.iter().for_each( |word| {
+            block!(self.send(word.clone())).unwrap();
+            block!(self.read()).unwrap();
+        });
+
+        self.set_cs_high();
+
+        Ok(())
+    }
+}
+
+impl ehal::blocking::spi::Transfer<u8> for Spi<SPI0> {
+
+    type Error = Error;
+
+    fn transfer<'w>(&mut self, words: &'w mut [u8]) -> Result<&'w [u8], Error> {
+        match self.peripheral.spi_mr.read().pcs().bits() {
+            _ => ()
+        }
+        self.peripheral.spi_csr[1].modify( |_,w| w.csaat().set_bit());
+
+
+        let l = words.len();
+        words.iter_mut().take(l-1).for_each( |word| {
+            block!(self.send(word.clone())).unwrap();
+            *word = block!(self.read()).unwrap();
+        });
+
+        // One byte has to be saved until after csaat is reset, or CS will never go high
+        self.peripheral.spi_csr[1].modify(|_,w| w.csaat().clear_bit());
+        if let Some(word) = words.iter_mut().last() {
+            block!(self.send(word.clone()))?;
+            *word = block!(self.read())?;
+        }
+
+        Ok(words)
+    }
+
+}
+
+impl ehal::blocking::spi::Transfer<u8> for Spi<USART1> {
+
+    type Error = Error;
+
+    fn transfer<'w>(&mut self, words: &'w mut [u8]) -> Result<&'w [u8], Error> {
+        self.set_cs_low();
+        words.iter_mut().for_each( |word| {
+            block!(self.send(word.clone())).unwrap();
+            *word = block!(self.read()).unwrap();
+        });
+
+        self.set_cs_high();
+
+        Ok(words)
+    }
+}
 
 impl Spi<SPI0> {
 
@@ -174,11 +241,12 @@ impl Spi<SPI0> {
         self.set_spi_mode(mode);
         self
     }
+
 }
 
-impl Spi<USART0> {
-    pub fn new(spi: USART0) -> Self {
-        spi.us_mr_spi_mode().write(|w| w.usart_mode().spi_master());
+impl Spi<USART1> {
+    pub fn new(spi: USART1) -> Self {
+        spi.us_mr_spi_mode().modify(|_,w| w.usart_mode().spi_master());
         Spi {
             peripheral: spi,
         }
@@ -192,10 +260,36 @@ impl Spi<USART0> {
         self.set_spi_mode(mode);
         self
     }
+
+    #[inline]
+    pub fn set_cs_low(&mut self) {
+        self.peripheral.us_cr_spi_mode().write(|w| w.fcs().set_bit());
+    }
+
+    #[inline]
+    pub fn set_cs_high(&mut self) {
+        self.peripheral.us_cr_spi_mode().write(|w| w.rcs().set_bit());
+    }
+
+    // These two functions should not touch the interrupts
+    #[inline]
+    pub fn client_mode(&mut self) {
+        self.peripheral.us_mr_spi_mode().modify(|_,w| w.usart_mode().spi_slave());
+        self.peripheral.us_ier_spi_mode().write(|w| w.rxrdy().set_bit());
+        // self.peripheral.us_cr_spi_mode().write(|w| w.rstrx().set_bit().rsttx().set_bit());
+    }
+
+    #[inline]
+    pub fn host_mode(&mut self) {
+        self.peripheral.us_mr_spi_mode().modify(|_,w| w.usart_mode().spi_master());
+        self.peripheral.us_idr_spi_mode().write(|w| w.rxrdy().set_bit());
+        // self.peripheral.us_cr_spi_mode().write(|w| w.rstrx().set_bit().rsttx().set_bit());
+    }
+
 }
 
 fn read_spi( regs: &SPIRegisterBlock) -> nb::Result<u8, Error> {
-    if regs.spi_sr.read().txempty().bit_is_clear() {
+    if regs.spi_sr.read().rdrf().bit_is_clear() {
         Err(nb::Error::WouldBlock)
     } else {
         Ok(regs.spi_rdr.read().rd().bits() as u8)
@@ -229,7 +323,7 @@ fn set_mode_spi( regs: &SPIRegisterBlock, mode: spi::Mode) {
 }
 
 fn read_usart( regs: &USARTRegisterBlock) -> nb::Result<u8, Error> {
-    if regs.us_csr_spi_mode().read().txempty().bit_is_clear() {
+    if regs.us_csr_spi_mode().read().rxrdy().bit_is_clear() {
         Err(nb::Error::WouldBlock)
     } else {
         Ok(regs.us_rhr.read().rxchr().bits() as u8)
